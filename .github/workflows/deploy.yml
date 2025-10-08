@@ -4,58 +4,68 @@ on:
   push:
     branches:
       - main
-      - '*'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Deploy via SSH
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22.17.1'
+
+      - name: Build React App
+        run: |
+          cd client
+          npm install
+          npm run build
+
+      - name: SSH Deploy to Server
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.SERVER_IP }}
+          host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_SSH_PORT }}
+          key: ${{ secrets.SERVER_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
           script: |
             #!/bin/bash
 
-            # Extract branch name
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            # Directory for this branch
+            BRANCH_NAME="main"
+            APP_DIR="/var/www/$BRANCH_NAME"
 
-            # Deployment folder
-            APP_DIR="/var/www/pipeline-demo.$BRANCH_NAME"
-            mkdir -p "$APP_DIR"
-            cd "$APP_DIR" || exit 1
+            mkdir -p $APP_DIR
+            cd $APP_DIR
 
-            # Initialize git if not exists
+            # If repo does not exist, clone it
             if [ ! -d ".git" ]; then
-              git init
-              git remote add origin git@github.com:prettify2025/pipeline-demo.git
+              git clone -b $BRANCH_NAME git@github.com:prettify2025/pipeline-demo.git .
+            else
+              git fetch origin
+              git reset --hard origin/$BRANCH_NAME
             fi
 
-            # Pull latest code
-            git fetch origin
-            git checkout -B "$BRANCH_NAME"
-            git reset --hard "origin/$BRANCH_NAME"
-
-            # Load NVM and Node.js
+            # Load NVM and Node
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-            # Install dependencies and build client
+            # Install dependencies & build React app
             npm install
+            cd client
             npm run build
+            cd ..
 
-            # Start/restart PM2 process
-            if pm2 describe "$BRANCH_NAME" > /dev/null 2>&1; then
-              pm2 restart "$BRANCH_NAME"
-            else
-              pm2 start server/index.js --name "$BRANCH_NAME"
+            # Stop existing PM2 process if running
+            if pm2 list | grep -q "$BRANCH_NAME"; then
+              pm2 delete "$BRANCH_NAME" || true
             fi
+
+            # Start Express server via PM2
+            pm2 start server/index.js --name "$BRANCH_NAME"
+
+            # Save PM2 process list
             pm2 save
 
