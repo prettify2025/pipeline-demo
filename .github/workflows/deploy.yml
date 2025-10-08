@@ -1,9 +1,9 @@
-name: Auto Deploy
+name: Deploy Branch
 
 on:
   push:
     branches:
-      - '*'   # Trigger on all branches
+      - '**'   # Trigger on all branches
 
 jobs:
   deploy:
@@ -13,59 +13,51 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '22'
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: 103.152.79.30
+          host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22919
-          debug: true
+          port: ${{ secrets.SERVER_SSH_PORT }}
           script: |
-            # Get branch name
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            if [ -z "$BRANCH_NAME" ]; then
-              BRANCH_NAME="main"
-            fi
+            #!/bin/bash
 
-            # Set project folder
-            APP_DIR="/var/www/$BRANCH_NAME"
+            # Get branch name without refs/heads/
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+
+            # Folder for this branch
+            APP_DIR="/var/www/pipeline-demo.$BRANCH_NAME"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR" || exit 1
 
-            # Initialize repo if not exists
+            # Initialize git repo if not exists
             if [ ! -d ".git" ]; then
               git init
               git remote add origin git@github.com:prettify2025/pipeline-demo.git
             fi
 
-            # Pull latest code
+            # Fetch latest code and checkout branch
             git fetch origin
             git checkout -B "$BRANCH_NAME"
             git reset --hard "origin/$BRANCH_NAME"
 
-            # Load NVM
+            # Load NVM for Node.js
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-            # Install dependencies and build
-            if [ -f "package.json" ]; then
-              npm install
-              npm run build
-            else
-              echo "package.json not found in $APP_DIR"
-            fi
+            # Install dependencies and build React app
+            npm install
+            npm run build
 
-            # Start/restart PM2
+            # PM2: restart if exists, else start
             if pm2 describe "$BRANCH_NAME" > /dev/null 2>&1; then
               pm2 restart "$BRANCH_NAME"
             else
               pm2 start server/index.js --name "$BRANCH_NAME"
             fi
+
+            # Save PM2 process list
+            pm2 save
 
