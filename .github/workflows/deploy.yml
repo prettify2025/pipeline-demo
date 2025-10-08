@@ -24,6 +24,8 @@ jobs:
           host: 103.152.79.30
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22919
+          debug: true
           script: |
             cd /var/www/pipeline-demo
             git fetch origin
@@ -32,3 +34,4 @@ jobs:
             npm install
             npm run build
             pm2 restart pipeline-demo || pm2 start server/index.js --name pipeline-demo
+
