@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node
+      - name: Setup Node.js for workflow
         uses: actions/setup-node@v3
         with:
           node-version: '22'
@@ -32,7 +32,7 @@ jobs:
             pwd
             ls -la
 
-      - name: Deploy App to Branch Folder
+      - name: Deploy App
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: 103.152.79.30
@@ -41,8 +41,11 @@ jobs:
           port: 22919
           debug: true
           script: |
+            # Get branch name without refs/heads/
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+
             # Branch folder = branch name
-            APP_DIR="/var/www/${GITHUB_REF_NAME}"
+            APP_DIR="/var/www/$BRANCH_NAME"
             mkdir -p $APP_DIR
             cd $APP_DIR
 
@@ -54,13 +57,18 @@ jobs:
 
             # Pull latest code
             git fetch origin
-            git checkout -B $GITHUB_REF_NAME
-            git reset --hard origin/$GITHUB_REF_NAME
+            git checkout -B $BRANCH_NAME
+            git reset --hard origin/$BRANCH_NAME
 
-            # Install and build
+            # Load NVM for Node.js and PM2
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+            # Install dependencies and build React app
             npm install
             npm run build
 
             # Start/restart PM2 with branch name
-            pm2 restart $GITHUB_REF_NAME || pm2 start server/index.js --name $GITHUB_REF_NAME
+            pm2 restart $BRANCH_NAME || pm2 start server/index.js --name $BRANCH_NAME
 
