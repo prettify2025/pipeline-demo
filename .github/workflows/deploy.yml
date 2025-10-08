@@ -1,16 +1,16 @@
-name: Deploy Branch
+name: Deploy Pipeline Demo
 
 on:
   push:
     branches:
-      - '**'   # Trigger on all branches
+      - main
+      - '*'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Deploy via SSH
@@ -23,41 +23,39 @@ jobs:
           script: |
             #!/bin/bash
 
-            # Get branch name without refs/heads/
+            # Extract branch name
             BRANCH_NAME=${GITHUB_REF#refs/heads/}
 
-            # Folder for this branch
+            # Deployment folder
             APP_DIR="/var/www/pipeline-demo.$BRANCH_NAME"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR" || exit 1
 
-            # Initialize git repo if not exists
+            # Initialize git if not exists
             if [ ! -d ".git" ]; then
               git init
               git remote add origin git@github.com:prettify2025/pipeline-demo.git
             fi
 
-            # Fetch latest code and checkout branch
+            # Pull latest code
             git fetch origin
             git checkout -B "$BRANCH_NAME"
             git reset --hard "origin/$BRANCH_NAME"
 
-            # Load NVM for Node.js
+            # Load NVM and Node.js
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-            # Install dependencies and build React app
+            # Install dependencies and build client
             npm install
             npm run build
 
-            # PM2: restart if exists, else start
+            # Start/restart PM2 process
             if pm2 describe "$BRANCH_NAME" > /dev/null 2>&1; then
               pm2 restart "$BRANCH_NAME"
             else
               pm2 start server/index.js --name "$BRANCH_NAME"
             fi
-
-            # Save PM2 process list
             pm2 save
 
