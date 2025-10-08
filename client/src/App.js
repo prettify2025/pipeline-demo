@@ -6,8 +6,9 @@ function App() {
     <div className="App">
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
+        <h1>Hello from React! 🚀 Workflow Test</h1>
         <p>
-          Edit <code>src/App.js</code> and save to reload.
+          This change is to verify that GitHub Actions auto-deploy is working.
         </p>
         <a
           className="App-link"
@@ -23,3 +24,4 @@ function App() {
 }
 
 export default App;
+
