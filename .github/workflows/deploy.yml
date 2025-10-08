@@ -3,7 +3,7 @@ name: Auto Deploy
 on:
   push:
     branches:
-      - '*'
+      - '*'   # Trigger on all branches
 
 jobs:
   deploy:
@@ -18,20 +18,49 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Deploy via SSH
+      - name: Test SSH connection
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: 103.152.79.30
-          username: root
+          username: ${{ secrets.SERVER_USER }}       # server username secret
+          key: ${{ secrets.SERVER_SSH_KEY }}        # private key secret
+          port: 22919                               # your SSH port
+          debug: true
+          script: |
+            echo "SSH connection successful"
+            whoami
+            pwd
+            ls -la
+
+      - name: Deploy App to Branch Folder
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: 103.152.79.30
+          username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22919
           debug: true
           script: |
-            cd /var/www/pipeline-demo
+            # Branch folder = branch name
+            APP_DIR="/var/www/${GITHUB_REF_NAME}"
+            mkdir -p $APP_DIR
+            cd $APP_DIR
+
+            # Initialize repo if not exists
+            if [ ! -d ".git" ]; then
+              git init
+              git remote add origin git@github.com:prettify2025/pipeline-demo.git
+            fi
+
+            # Pull latest code
             git fetch origin
-            git checkout ${{ github.ref_name }}
-            git pull origin ${{ github.ref_name }}
+            git checkout -B $GITHUB_REF_NAME
+            git reset --hard origin/$GITHUB_REF_NAME
+
+            # Install and build
             npm install
             npm run build
-            pm2 restart pipeline-demo || pm2 start server/index.js --name pipeline-demo
+
+            # Start/restart PM2 with branch name
+            pm2 restart $GITHUB_REF_NAME || pm2 start server/index.js --name $GITHUB_REF_NAME
 
